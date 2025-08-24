@@ -1206,6 +1206,17 @@ async function deleteHistoryRecord(type, id) {
     }
 }
 
+async function loadStreamStats() {
+    try {
+        const response = await fetch('/api/drone/stream/active');
+        const data = await response.json();
+        document.getElementById('activeStreams').textContent = data.activeCount || 0;
+    } catch (error) {
+        console.error('获取流统计失败:', error);
+        document.getElementById('activeStreams').textContent = '0';
+    }
+}
+
 // 全局函数
 function showSection(sectionName) {
     if (window.app) {
@@ -1292,5 +1303,7 @@ function viewImageFullscreen(imagePath) {
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', function() {
+
+    loadStreamStats();
     window.app = new DroneDetectionApp();
 });

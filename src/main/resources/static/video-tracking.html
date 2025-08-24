@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频跟踪 - 无人机检测系统</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    .video-preview {
+      background: #f8f9fa;
+      border: 2px dashed #dee2e6;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      min-height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    .video-preview.active {
+      border-color: #0d6efd;
+      background: #e7f3ff;
+    }
+
+    .video-stream {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .detection-overlay {
+      position: relative;
+      display: inline-block;
+    }
+
+    .detection-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+
+    .stream-controls {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    .status-stopped { background: #6c757d; }
+    .status-connecting { background: #ffc107; animation: pulse 1.5s infinite; }
+    .status-active { background: #198754; }
+    .status-error { background: #dc3545; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .log-container {
+      height: 300px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    .log-entry {
+      margin-bottom: 4px;
+      padding: 2px 0;
+    }
+
+    .log-success { color: #198754; }
+    .log-error { color: #dc3545; }
+    .log-warning { color: #fd7e14; }
+    .log-info { color: #0d6efd; }
+
+    .detection-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+    }
+
+    .stat-card {
+      text-align: center;
+      padding: 1rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #0d6efd;
+    }
+
+    .stat-label {
+      color: #6c757d;
+      font-size: 0.9em;
+    }
+
+    .stream-url-input {
+      font-family: monospace;
+    }
+
+    .preset-urls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .preset-url {
+      font-size: 0.8em;
+      padding: 0.25rem 0.5rem;
+    }
+
+    .camera-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+
+    .camera-card {
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .camera-preview {
+      width: 100%;
+      height: 200px;
+      background: #f8f9fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+<div class="container-fluid mt-3">
+  <!-- 页面标题 -->
+  <div class="row mb-4">
+    <div class="col">
+      <h2>
+        <i class="bi bi-camera-video me-2"></i>视频跟踪
+        <small class="text-muted">实时视频流检测与跟踪</small>
+      </h2>
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-secondary" onclick="goBack()">
+        <i class="bi bi-arrow-left me-1"></i>返回主页
+      </button>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- 左侧控制面板 -->
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="bi bi-gear me-2"></i>流配置
+          </h5>
+        </div>
+        <div class="card-body">
+          <!-- 视频源配置 -->
+          <div class="mb-3">
+            <label for="streamUrl" class="form-label">
+              <i class="bi bi-link-45deg me-1"></i>视频源
+            </label>
+            <input type="text" class="form-control stream-url-input" id="streamUrl"
+                   placeholder="输入RTSP/RTMP/HTTP流地址或摄像头ID">
+            <div class="preset-urls">
+              <button class="btn btn-outline-primary btn-sm preset-url" onclick="setPresetUrl('0')">
+                摄像头0
+              </button>
+              <button class="btn btn-outline-primary btn-sm preset-url" onclick="setPresetUrl('1')">
+                摄像头1
+              </button>
+              <button class="btn btn-outline-secondary btn-sm preset-url" onclick="setPresetUrl('rtsp://demo.com/stream')">
+                RTSP示例
+              </button>
+            </div>
+          </div>
+
+          <!-- API配置 -->
+          <div class="mb-3">
+            <label for="apiKey" class="form-label">
+              <i class="bi bi-key me-1"></i>API Key
+            </label>
+            <input type="password" class="form-control" id="apiKey"
+                   placeholder="输入Qwen API密钥">
+          </div>
+
+          <!-- 检测参数 -->
+          <div class="mb-3">
+            <label for="confThreshold" class="form-label">
+              置信度阈值: <span id="confValue">0.5</span>
+            </label>
+            <input type="range" class="form-range" id="confThreshold"
+                   min="0.1" max="0.9" step="0.1" value="0.5">
+          </div>
+
+          <div class="row mb-3">
+            <div class="col">
+              <label for="detectionInterval" class="form-label">检测间隔</label>
+              <select class="form-select" id="detectionInterval">
+                <option value="10">每10帧</option>
+                <option value="30" selected>每30帧</option>
+                <option value="60">每60帧</option>
+                <option value="120">每120帧</option>
+              </select>
+            </div>
+            <div class="col">
+              <label for="trackerType" class="form-label">跟踪器</label>
+              <select class="form-select" id="trackerType">
+                <option value="MIL" selected>MIL</option>
+                <option value="CSRT">CSRT</option>
+                <option value="KCF">KCF</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 高级选项 -->
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="enableAlerts">
+              <label class="form-check-label" for="enableAlerts">
+                启用告警通知
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="saveImages">
+              <label class="form-check-label" for="saveImages">
+                保存检测图像
+              </label>
+            </div>
+          </div>
+
+          <!-- 控制按钮 -->
+          <div class="d-grid gap-2">
+            <button class="btn btn-success" onclick="startTracking()" id="startBtn">
+              <i class="bi bi-play-fill me-1"></i>开始跟踪
+            </button>
+            <button class="btn btn-danger" onclick="stopTracking()" id="stopBtn" disabled>
+              <i class="bi bi-stop-fill me-1"></i>停止跟踪
+            </button>
+          </div>
+
+          <!-- 流状态 -->
+          <div class="mt-3 p-3 bg-light rounded" id="streamStatus">
+            <h6 class="mb-2">
+              <i class="bi bi-info-circle me-1"></i>状态
+            </h6>
+            <div id="statusContent">
+              <span class="status-indicator status-stopped"></span>
+              未连接
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧视频预览和统计 -->
+    <div class="col-md-8">
+      <!-- 视频预览 -->
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">
+            <i class="bi bi-camera me-2"></i>实时预览
+          </h5>
+          <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary" onclick="toggleFullscreen()" title="全屏">
+              <i class="bi bi-arrows-fullscreen"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary" onclick="captureFrame()" title="截图">
+              <i class="bi bi-camera"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="video-preview" id="videoPreview">
+            <i class="bi bi-camera-video" style="font-size: 4rem; color: #6c757d;"></i>
+            <p class="text-muted mt-2">配置视频源并开始跟踪</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计信息 -->
+      <div class="card mb-3">
+        <div class="card-header">
+          <h5 class="card-title mb-0">
+            <i class="bi bi-graph-up me-2"></i>检测统计
+          </h5>
+        </div>
+        <div class="card-body">
+          <div class="detection-stats" id="detectionStats">
+            <div class="stat-card">
+              <div class="stat-value" id="currentPersons">0</div>
+              <div class="stat-label">当前人数</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalFrames">0</div>
+              <div class="stat-label">处理帧数</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="totalDetections">0</div>
+              <div class="stat-label">检测次数</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="avgProcessTime">0</div>
+              <div class="stat-label">平均耗时(ms)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志面板 -->
+  <div class="row mt-3">
+    <div class="col">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">
+            <i class="bi bi-terminal me-2"></i>实时日志
+          </h5>
+          <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+            <i class="bi bi-trash me-1"></i>清空日志
+          </button>
+        </div>
+        <div class="card-body p-0">
+          <div class="log-container" id="logContainer">
+            <!-- 日志内容 -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  // 视频跟踪管理器
+  class VideoTrackingManager {
+    constructor() {
+      this.currentSessionId = null;
+      this.eventSource = null;
+      this.isTracking = false;
+      this.stats = {
+        currentPersons: 0,
+        totalFrames: 0,
+        totalDetections: 0,
+        avgProcessTime: 0
+      };
+      this.logCount = 0;
+      this.maxLogs = 100;
+
+      this.initializeElements();
+    }
+
+    initializeElements() {
+      // 置信度滑块
+      const confThreshold = document.getElementById('confThreshold');
+      const confValue = document.getElementById('confValue');
+
+      confThreshold.addEventListener('input', (e) => {
+        confValue.textContent = e.target.value;
+      });
+    }
+
+    async startTracking() {
+      const request = this.buildTrackingRequest();
+
+      try {
+        this.addLog('🚀 启动视频流跟踪...', 'info');
+        this.updateStatus('connecting', '连接中...');
+
+        const response = await fetch('/api/drone/stream/start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(request)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          this.currentSessionId = result.sessionId;
+          this.isTracking = true;
+
+          this.addLog(`✅ 跟踪会话已创建: ${this.currentSessionId}`, 'success');
+          this.updateStatus('active', '跟踪中...');
+          this.updateControls(true);
+
+          // 启动结果监听
+          this.startResultListener();
+
+          // 启动视频流显示
+          this.startVideoStream();
+
+        } else {
+          throw new Error(result.error || '启动失败');
+        }
+
+      } catch (error) {
+        this.addLog(`❌ 启动失败: ${error.message}`, 'error');
+        this.updateStatus('error', '连接失败');
+        this.updateControls(false);
+      }
+    }
+
+    async stopTracking() {
+      if (!this.currentSessionId) return;
+
+      try {
+        this.addLog('🛑 停止视频流跟踪...', 'info');
+
+        const response = await fetch(`/api/drone/stream/stop/${this.currentSessionId}`, {
+          method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          this.addLog('✅ 跟踪已停止', 'success');
+        }
+
+      } catch (error) {
+        this.addLog(`❌ 停止失败: ${error.message}`, 'error');
+      } finally {
+        this.cleanup();
+      }
+    }
+
+    startResultListener() {
+      if (!this.currentSessionId) return;
+
+      this.eventSource = new EventSource(`/api/drone/stream/results/${this.currentSessionId}`);
+
+      this.eventSource.onmessage = (event) => {
+        try {
+          const result = JSON.parse(event.data);
+          this.handleTrackingResult(result);
+        } catch (error) {
+          console.error('解析跟踪结果失败:', error);
+          this.addLog(`⚠️ 解析结果失败: ${error.message}`, 'warning');
+        }
+      };
+
+      this.eventSource.onerror = (error) => {
+        console.error('EventSource错误:', error);
+        this.addLog('❌ 连接中断，尝试重连...', 'error');
+        this.updateStatus('error', '连接中断');
+
+        // 尝试重连
+        setTimeout(() => {
+          if (this.isTracking) {
+            this.startResultListener();
+          }
+        }, 5000);
+      };
+
+      this.addLog('📡 开始接收实时结果...', 'info');
+    }
+
+    startVideoStream() {
+      if (!this.currentSessionId) return;
+
+      const videoPreview = document.getElementById('videoPreview');
+
+      // 创建img元素显示MJPEG流
+      const img = document.createElement('img');
+      img.className = 'video-stream';
+      img.src = `/api/drone/stream/frames/${this.currentSessionId}`;
+      img.alt = '实时视频流';
+
+      img.onload = () => {
+        videoPreview.innerHTML = '';
+
+        const overlay = document.createElement('div');
+        overlay.className = 'detection-overlay';
+        overlay.appendChild(img);
+
+        const info = document.createElement('div');
+        info.className = 'detection-info';
+        info.id = 'detectionInfo';
+        info.innerHTML = '等待检测结果...';
+        overlay.appendChild(info);
+
+        videoPreview.appendChild(overlay);
+        videoPreview.classList.add('active');
+      };
+
+      img.onerror = () => {
+        this.addLog('❌ 视频流加载失败', 'error');
+        videoPreview.innerHTML = `
+                        <i class="bi bi-exclamation-triangle" style="font-size: 3rem; color: #dc3545;"></i>
+                        <p class="text-danger mt-2">视频流加载失败</p>
+                    `;
+      };
+    }
+
+    handleTrackingResult(result) {
+      // 更新统计信息
+      this.stats.currentPersons = result.currentPersonCount || 0;
+      this.stats.totalFrames = result.frameNumber || 0;
+      this.stats.totalDetections = result.totalDetections || 0;
+
+      if (result.processingTimeMs) {
+        // 计算平均处理时间
+        const currentAvg = this.stats.avgProcessTime;
+        this.stats.avgProcessTime = currentAvg === 0 ?
+                result.processingTimeMs :
+                Math.round((currentAvg + result.processingTimeMs) / 2);
+      }
+
+      this.updateStatsDisplay();
+
+      // 更新检测信息覆盖层
+      this.updateDetectionOverlay(result);
+
+      // 记录检测日志
+      if (result.currentPersonCount > 0) {
+        this.addLog(`🎯 检测到${result.currentPersonCount}个目标 [帧${result.frameNumber}]`, 'success');
+      }
+
+      // 检查告警
+      if (result.alertTriggered && result.alertMessage) {
+        this.addLog(`🚨 告警: ${result.alertMessage}`, 'warning');
+        this.showAlert(result.alertMessage);
+      }
+    }
+
+    updateDetectionOverlay(result) {
+      const detectionInfo = document.getElementById('detectionInfo');
+      if (!detectionInfo) return;
+
+      const timestamp = new Date(result.timestamp).toLocaleTimeString();
+      let info = `
+                    <strong>帧 ${result.frameNumber}</strong><br>
+                    <i class="bi bi-people me-1"></i>${result.currentPersonCount}人<br>
+                    <i class="bi bi-clock me-1"></i>${timestamp}<br>
+                    <i class="bi bi-speedometer me-1"></i>${result.processingTimeMs}ms
+                `;
+
+      if (result.detections && result.detections.length > 0) {
+        info += '<br><small>';
+        result.detections.forEach(detection => {
+          info += `ID${detection.trackerId}(${(detection.confidence * 100).toFixed(1)}%) `;
+        });
+        info += '</small>';
+      }
+
+      detectionInfo.innerHTML = info;
+    }
+
+    updateStatsDisplay() {
+      document.getElementById('currentPersons').textContent = this.stats.currentPersons;
+      document.getElementById('totalFrames').textContent = this.stats.totalFrames;
+      document.getElementById('totalDetections').textContent = this.stats.totalDetections;
+      document.getElementById('avgProcessTime').textContent = this.stats.avgProcessTime;
+    }
+
+    buildTrackingRequest() {
+      return {
+        streamUrl: document.getElementById('streamUrl').value.trim(),
+        apiKey: document.getElementById('apiKey').value.trim(),
+        confThreshold: parseFloat(document.getElementById('confThreshold').value),
+        detectionInterval: parseInt(document.getElementById('detectionInterval').value),
+        trackerType: document.getElementById('trackerType').value,
+        enableAlerts: document.getElementById('enableAlerts').checked,
+        saveImages: document.getElementById('saveImages').checked,
+        maxDetections: 200,
+        description: `视频流跟踪 - ${new Date().toLocaleString()}`
+      };
+    }
+
+    updateStatus(status, message) {
+      const statusContent = document.getElementById('statusContent');
+      const statusClasses = ['status-stopped', 'status-connecting', 'status-active', 'status-error'];
+
+      statusContent.innerHTML = `
+                    <span class="status-indicator ${statusClasses.find(cls => cls.includes(status)) || 'status-stopped'}"></span>
+                    ${message}
+                `;
+
+      if (this.currentSessionId) {
+        statusContent.innerHTML += `<br><small class="text-muted">会话: ${this.currentSessionId}</small>`;
+      }
+    }
+
+    updateControls(isTracking) {
+      document.getElementById('startBtn').disabled = isTracking;
+      document.getElementById('stopBtn').disabled = !isTracking;
+
+      // 禁用/启用配置控件
+      const controls = ['streamUrl', 'apiKey', 'confThreshold', 'detectionInterval', 'trackerType'];
+      controls.forEach(id => {
+        document.getElementById(id).disabled = isTracking;
+      });
+    }
+
+    cleanup() {
+      this.isTracking = false;
+      this.currentSessionId = null;
+
+      if (this.eventSource) {
+        this.eventSource.close();
+        this.eventSource = null;
+      }
+
+      this.updateStatus('stopped', '已停止');
+      this.updateControls(false);
+
+      // 清空视频预览
+      const videoPreview = document.getElementById('videoPreview');
+      videoPreview.classList.remove('active');
+      videoPreview.innerHTML = `
+                    <i class="bi bi-camera-video" style="font-size: 4rem; color: #6c757d;"></i>
+                    <p class="text-muted mt-2">配置视频源并开始跟踪</p>
+                `;
+    }
+
+    addLog(message, type = 'info') {
+      const logContainer = document.getElementById('logContainer');
+      const timestamp = new Date().toLocaleTimeString();
+
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry log-${type}`;
+      logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+
+      logContainer.insertBefore(logEntry, logContainer.firstChild);
+
+      // 限制日志数量
+      this.logCount++;
+      if (this.logCount > this.maxLogs) {
+        const lastEntry = logContainer.lastElementChild;
+        if (lastEntry) {
+          lastEntry.remove();
+          this.logCount--;
+        }
+      }
+    }
+
+    showAlert(message) {
+      // 简单的浏览器通知
+      if (Notification.permission === 'granted') {
+        new Notification('检测告警', {
+          body: message,
+          icon: '/favicon.ico'
+        });
+      }
+
+      // 页面内告警
+      const alert = document.createElement('div');
+      alert.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+      alert.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+      alert.innerHTML = `
+                    <i class="bi bi-exclamation-triangle me-2"></i>${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+
+      document.body.appendChild(alert);
+
+      // 自动移除
+      setTimeout(() => {
+        if (alert.parentNode) {
+          alert.remove();
+        }
+      }, 5000);
+    }
+  }
+
+  // 全局变量和函数
+  let trackingManager;
+
+  // 页面加载完成后初始化
+  document.addEventListener('DOMContentLoaded', function() {
+    trackingManager = new VideoTrackingManager();
+
+    // 请求通知权限
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  });
+
+  // 全局函数
+  function startTracking() {
+    // 验证输入
+    const streamUrl = document.getElementById('streamUrl').value.trim();
+    const apiKey = document.getElementById('apiKey').value.trim();
+
+    if (!streamUrl) {
+      alert('请输入视频源地址或摄像头ID');
+      return;
+    }
+
+    if (!apiKey) {
+      alert('请输入API Key');
+      return;
+    }
+
+    trackingManager.startTracking();
+  }
+
+  function stopTracking() {
+    trackingManager.stopTracking();
+  }
+
+  function setPresetUrl(url) {
+    document.getElementById('streamUrl').value = url;
+  }
+
+  function clearLogs() {
+    document.getElementById('logContainer').innerHTML = '';
+    trackingManager.logCount = 0;
+  }
+
+  function toggleFullscreen() {
+    const videoPreview = document.getElementById('videoPreview');
+
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      videoPreview.requestFullscreen().catch(err => {
+        console.error('全屏失败:', err);
+      });
+    }
+  }
+
+  function captureFrame() {
+    const img = document.querySelector('.video-stream');
+    if (!img) {
+      alert('当前没有视频流');
+      return;
+    }
+
+    // 创建canvas截图
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+
+    ctx.drawImage(img, 0, 0);
+
+    // 下载截图
+    const link = document.createElement('a');
+    link.download = `capture_${new Date().getTime()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+
+    trackingManager.addLog('📸 已保存截图', 'success');
+  }
+
+  function goBack() {
+    window.location.href = '/';
+  }
+
+  // 页面卸载时清理资源
+  window.addEventListener('beforeunload', function() {
+    if (trackingManager && trackingManager.isTracking) {
+      trackingManager.stopTracking();
+    }
+  });
+</script>
+</body>
+</html>
