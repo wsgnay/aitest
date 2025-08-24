@@ -1,0 +1,13 @@
+{
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.jdt.ls.java.home": "/Users/weisanju/Library/Java/JavaVirtualMachines/corretto-17.0.14/Contents/Home",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-17",
+            "path": "/Users/weisanju/Library/Java/JavaVirtualMachines/corretto-17.0.14/Contents/Home",
+            "default": true
+        }
+    ],
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.debug.settings.hotCodeReplace": "auto"
+}

@@ -1,0 +1,2 @@
+JAVA_HOME=/opt/homebrew/opt/openjdk@17
+PATH=$JAVA_HOME/bin:$PATH

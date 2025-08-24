@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Debug (Launch) - Current File",
+            "request": "launch",
+            "mainClass": "${file}",
+            "vmArgs": "-ea"
+        },
+        {
+            "type": "java",
+            "name": "Debug FFmpegPerformanceTest",
+            "request": "launch",
+            "mainClass": "com.example.ffmpeg.FFmpegPerformanceTest",
+            "projectName": "ffmpeg-jni",
+            "vmArgs": "-ea"
+        }
+    ]
+}

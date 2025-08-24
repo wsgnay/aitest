@@ -1,0 +1,174 @@
+spring:
+  application:
+    name: ffmpeg-drone-inspection
+
+  # WebFlux配置
+  codec:
+    max-in-memory-size: 50MB
+  webflux:
+    multipart:
+      max-in-memory-size: 50MB
+      max-disk-usage-per-part: 100MB
+
+  # R2DBC数据库配置 - 修复MySQL 8时区问题
+  r2dbc:
+    url: r2dbc:mysql://localhost:3306/drone_detection?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8&useUnicode=true
+    username: root
+    password: 123456
+    pool:
+      initial-size: 5
+      max-size: 20
+      max-idle-time: 30m
+      validation-query: SELECT 1
+      # MySQL 8 特定配置
+      max-acquire-time: 60s
+      max-create-connection-time: 30s
+      # 连接验证
+      validation-depth: LOCAL
+
+  # Flyway数据库迁移配置 - 修复MySQL 8时区问题
+  flyway:
+    url: jdbc:mysql://localhost:3306/drone_detection?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8&useUnicode=true
+    user: root
+    password: 123456  # 注意：这里应该与r2dbc密码一致
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+    # MySQL 8 特定配置
+    mixed: false
+    encoding: UTF-8
+    sql-migration-suffixes:
+      - .sql
+
+  # Jackson JSON配置
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: Asia/Shanghai  # 修改为更明确的时区
+    date-format: yyyy-MM-dd HH:mm:ss
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# 数据库相关日志配置
+logging:
+  level:
+    root: INFO
+    com.example.ffmpeg: DEBUG
+    com.example.ffmpeg.service.QwenApiService: DEBUG
+    com.example.ffmpeg.service.DroneImageDetectionService: DEBUG
+    com.example.ffmpeg.service.DroneVideoTrackingService: DEBUG
+    com.example.ffmpeg.service.DatabaseService: DEBUG
+    org.springframework.web: INFO
+    org.springframework.data.r2dbc: DEBUG
+    io.r2dbc.mysql: DEBUG  # 专门用于MySQL R2DBC调试
+    org.flywaydb: INFO  # Flyway日志
+    com.zaxxer.hikari: DEBUG  # 如果使用HikariCP连接池
+
+# 针对MySQL 8的优化配置
+server:
+  port: 8080
+  # 针对大文件上传的超时配置
+  max-http-request-size: 500MB
+
+# 自定义数据库配置
+database:
+  mysql:
+    # MySQL 8 连接参数
+    connection-properties:
+      useSSL: false
+      allowPublicKeyRetrieval: true
+      serverTimezone: Asia/Shanghai
+      characterEncoding: utf8
+      useUnicode: true
+      # MySQL 8 性能优化
+      cachePrepStmts: true
+      prepStmtCacheSize: 250
+      prepStmtCacheSqlLimit: 2048
+      useServerPrepStmts: true
+      rewriteBatchedStatements: true
+
+    # 连接池配置
+    pool:
+      # 适合MySQL 8的配置
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+
+# 无人机检测系统特定配置
+drone:
+  inspection:
+    storage:
+      upload-dir: "uploads"
+      output-dir: "outputs"
+      temp-dir: "temp"
+      # 文件存储配置
+      max-file-size: 500MB
+      allowed-image-extensions:
+        - jpg
+        - jpeg
+        - png
+        - bmp
+        - tiff
+        - webp
+      allowed-video-extensions:
+        - mp4
+        - avi
+        - mov
+        - mkv
+        - flv
+        - wmv
+
+    # API配置
+    api:
+      # Qwen API配置
+      qwen:
+        base-url: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+        default-model: "qwen2.5-vl-72b-instruct"
+        timeout: 120
+        max-retries: 3
+
+    # 检测配置
+    detection:
+      # 默认置信度阈值
+      default-confidence-threshold: 0.3
+      # 默认图像最大尺寸
+      default-max-image-size: 1024
+      # 支持的图像格式
+      supported-image-formats:
+        - jpg
+        - jpeg
+        - png
+        - bmp
+        - tiff
+      # 支持的视频格式
+      supported-video-formats:
+        - mp4
+        - avi
+        - mov
+        - mkv
+        - flv
+
+    # 视频跟踪配置
+    tracking:
+      # 默认跟踪器类型
+      default-tracker-type: "MIL"
+      # 支持的跟踪器类型
+      supported-tracker-types:
+        - "MIL"
+        - "CSRT"
+        - "KCF"
+      # 检测帧配置
+      detection-frames:
+        - 1
+        - 60
+        - 150
+        - 300
+      # 自动去重配置
+      auto-dedup:
+        enabled: true
+        distance-threshold: 50.0
+        confidence-threshold: 0.1

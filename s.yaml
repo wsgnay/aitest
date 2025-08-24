@@ -1,0 +1,60 @@
+edition: 3.0.0
+name: ffmpeg
+access: "prod"
+
+vars:
+  OSS_MOUNT_DIR: "/home/data"
+
+template:
+  template_function_config:
+    diskSize: 512
+    timeout: 900
+    internetAccess: true
+    memorySize: 128
+    # 环境变量配置
+    environmentVariables:
+      OSS_MOUNT_DIR: ${vars.OSS_MOUNT_DIR}
+
+    # 异步调用配置
+    asyncInvokeConfig:
+      asyncTask: true
+      maxAsyncEventAgeInSeconds: 86400
+      maxAsyncRetryAttempts: 0
+
+resources:
+  ffmpeg:
+    component: fc3
+    props:
+      functionName: "ffmpeg"
+      region: cn-hangzhou
+      code: ./target/ffmpeg-jni-1.0-SNAPSHOT.jar
+      description: 'ffmpeg tools with webflux'
+      timeout: 60
+      diskSize: 512
+      internetAccess: true
+      customRuntimeConfig:
+        port: 5000
+        command:
+          - java -jar target/ffmpeg-jni-1.0-SNAPSHOT.jar
+        healthCheckConfig: {}
+      runtime: custom.debian10
+      cpu: 1.0
+      instanceConcurrency: 100
+      memorySize: 4096
+      environmentVariables:
+        TZ: Asia/Shanghai
+        OSS_MOUNT_DIR: /home/data
+      triggers:
+        - triggerConfig:
+            methods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            authType: function
+            disableURLInternet: false
+          triggerName: defaultTrigger
+          description: ''
+          qualifier: LATEST
+          triggerType: http
